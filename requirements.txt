@@ -1,0 +1,11 @@
+streamlit
+PyPDF2
+langchain
+dotenv
+requests
+google-generativeai
+langchain-google-genai
+fitz
+frontend 
+PyMuPDF
+tools
