@@ -1,58 +1,41 @@
-# chatbot/chatbot.py
-import os
-import streamlit as st
-from langchain.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings,ChatGoogleGenerativeAI
+# chatbot/chatbot.py  (full file)
+import os, streamlit as st
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    GoogleGenerativeAIEmbeddings,
+)
+from langchain_community.vectorstores import FAISS          # ← new import path
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
 
-def _missing_api_key() -> bool:
-    return not os.getenv("GOOGLE_API_KEY", "").strip()
-
-
 def create_chatbot_chain(documents):
-    """
-    Build a ConversationalRetrievalChain from a list of LangChain Documents.
-    Returns the chain or raises a ValueError with a user-readable message.
-    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY env var not set")
 
-    # ---------- 1. Basic validations ----------
-    if _missing_api_key():
-        raise ValueError(
-            "GOOGLE_API_KEY is not set. Add it to your .env or Streamlit secrets."
-        )
-
-    if not documents:
-        raise ValueError(
-            "No text was extracted from the PDF, so the AI Tutor cannot be initialised."
-        )
-
-    # ---------- 2. Build components ----------
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+    # embeddings
+    embed_model = GoogleGenerativeAIEmbeddings(
+        google_api_key=api_key, model="models/embedding-001"
     )
 
-    vector_store = FAISS.from_documents(documents, embeddings)
+    vectordb = FAISS.from_documents(documents, embed_model)
 
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+    llm = ChatGoogleGenerativeAI(          # temperature now 0-1 range
+        google_api_key=api_key,
+        model="gemini-pro",
         temperature=0.3,
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
     )
 
     memory = ConversationBufferMemory(
+        return_messages=True,
         memory_key="chat_history",
         output_key="answer",
-        return_messages=True,
     )
 
-    # ---------- 3. Assemble chain ----------
-    chain = ConversationalRetrievalChain.from_llm(
+    return ConversationalRetrievalChain.from_llm(
         llm=llm,
-        retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
+        retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
         memory=memory,
         return_source_documents=True,
     )
-    return chain

@@ -1,11 +1,20 @@
-streamlit
-langchain
-langchain-community
-langchain-core
-google-generativeai
-PyPDF2
-PyMuPDF
-faiss-cpu
-python-dotenv
-requests
-langchain-google-genai
+# ── Streamlit
+streamlit==1.46.1          # keep the one Cloud already cached
+
+# ── LangChain 0.3 family
+langchain==0.3.26
+langchain-community==0.3.27
+langchain-core==0.3.67
+langchain-google-genai==2.0.10    # ← correct package name
+
+# ── Google SDK (pulled automatically by the adapter but pin anyway)
+google-generativeai==0.8.5
+
+# ── PDF + vector stuff
+PyMuPDF==1.26.3
+PyPDF2==3.0.1
+faiss-cpu==1.11.0
+
+# ── misc
+python-dotenv==1.1.1
+requests==2.32.4
