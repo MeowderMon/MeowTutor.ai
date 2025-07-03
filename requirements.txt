@@ -1,10 +1,10 @@
 streamlit
 langchain
+langchain-community
+langchain-core
 google-generativeai
 PyPDF2
 PyMuPDF
-python-dotenv
 faiss-cpu
+python-dotenv
 requests
-langchain-community
-langchain-google-generativeai
