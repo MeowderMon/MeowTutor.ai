@@ -24,14 +24,14 @@ GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 st.set_page_config(page_title="MeowTutor", layout="wide")
 st.title("\U0001F4D8 MeowTutor – Smart Reading & Testing Tutor")
 
-# Helper to embed PDF using base64
-def show_pdf(path, height=700):
+# Helper to embed PDF using Streamlit built-in component
+def show_pdf(path):
     with open(path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
+        base64_pdf = base64.b64encode(f.read()).decode("utf-8")
     pdf_display = f"""
-    <iframe src="data:application/pdf;base64,{b64}" width="100%" height="{height}px" style="border: none;"></iframe>
+        <embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700px" type="application/pdf">
     """
-    st.markdown(pdf_display, unsafe_allow_html=True)
+    st.components.v1.html(pdf_display, height=700)
 
 # Build Gemini-based QA Chain
 def get_qa_chain(pdf_path, api_key):
@@ -72,7 +72,7 @@ if st.session_state["pdf_path"]:
         col1, col2 = st.columns([4, 1])
 
         with col1:
-            show_pdf(st.session_state["pdf_path"], height=700)
+            show_pdf(st.session_state["pdf_path"])
 
         with col2:
             st.subheader("\U0001F4AC Chatbot")
