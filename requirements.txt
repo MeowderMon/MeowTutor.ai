@@ -6,5 +6,5 @@ PyMuPDF
 python-dotenv
 faiss-cpu
 requests
-langchain-communit
+langchain-community
 langchain-google-generativeai
