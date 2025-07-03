@@ -23,8 +23,8 @@ def create_chatbot_chain(documents):
 
     llm = ChatGoogleGenerativeAI(          # temperature now 0-1 range
         google_api_key=api_key,
-        model="gemini-pro",
-        temperature=0.3,
+        model="gemini-2.5-flash",  
+        temperature=0.5,
     )
 
     memory = ConversationBufferMemory(
