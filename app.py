@@ -1,124 +1,91 @@
 import streamlit as st
+import fitz  # PyMuPDF
 import base64
 import os
+from dotenv import load_dotenv
+
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import ConversationalRetrievalChain
 
 from quizzer.generator import generate_mcqs_from_text
+from quizzer.ui import show_mcq_interface
 from quizzer.scorer import score_quiz
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_google_genai import GoogleGenerativeAI
-from dotenv import load_dotenv
-from langchain.chains import ConversationalRetrievalChain
-from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.document_loaders import PyMuPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# ——— Setup Gemini LLM for Chatbot ——————————————
-load_dotenv()
-gemini_api_key = os.getenv("GEMINI_API_KEY")
-chat_llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=gemini_api_key)
+# Load API key
+dotenv_path = os.path.join(os.getcwd(), ".env")
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ——— PDF Embed Helper ————————————————————————
-def show_pdf(path, height=800):
-    """Embed a PDF in Streamlit via base64 Data URI."""
+# Set up Streamlit
+st.set_page_config(page_title="MeowTutor", layout="wide")
+st.title("\U0001F4D8 MeowTutor – Smart Reading & Testing Tutor")
+
+# Helper to embed PDF using base64
+def show_pdf(path, height=700):
     with open(path, "rb") as f:
-        pdf_bytes = f.read()
-    b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-    iframe = f"""
-        <iframe
-            src="data:application/pdf;base64,{b64}"
-            width="100%"
-            height="{height}px"
-            style="border: none;"
-            type="application/pdf"
-        ></iframe>
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+    pdf_display = f"""
+    <iframe src="data:application/pdf;base64,{b64}" width="100%" height="{height}px" style="border: none;"></iframe>
     """
-    st.markdown(iframe, unsafe_allow_html=True)
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
-# ——— Build a simple conversational QA chain —————————
-def get_qa_chain(pdf_path):
+# Build Gemini-based QA Chain
+def get_qa_chain(pdf_path, api_key):
     loader = PyMuPDFLoader(pdf_path)
     docs = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     chunks = splitter.split_documents(docs)
-    embeddings = OpenAIEmbeddings()
+
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
     vectorstore = FAISS.from_documents(chunks, embeddings)
-    return ConversationalRetrievalChain.from_llm(chat_llm, vectorstore.as_retriever())
 
-# ——— Quiz UI —————————————————————————————————————
-def show_mcq_interface(pdf_path):
-    # 1) generate quiz
-    if "quiz_questions" not in st.session_state or not st.session_state["quiz_questions"]:
-        st.markdown("### 🧠 Generate a Quiz from PDF")
-        num_mcqs = st.slider("Number of MCQs", 5, 20, 5, key="numq_slider")
-        if st.button("Generate Quiz", key="gen_quiz_btn"):
-            with st.spinner("🔄 Generating questions..."):
-                loader = PyMuPDFLoader(pdf_path)
-                docs = loader.load()
-                full_text = "\n".join(d.page_content for d in docs)
-                qs = generate_mcqs_from_text(full_text, num_questions=num_mcqs)
-                if not qs:
-                    st.error("❌ No questions generated. Check your API or PDF content.")
-                    return
-                st.session_state["quiz_questions"] = qs
-            st.experimental_rerun()
-        return
+    llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
+    return ConversationalRetrievalChain.from_llm(llm, vectorstore.as_retriever())
 
-    # 2) display & answer
-    st.markdown("### 📝 Take the Quiz")
-    responses = []
-    for i, q in enumerate(st.session_state["quiz_questions"]):
-        st.markdown(f"**Q{i+1}. {q['question']}**")
-        choice = st.radio("", q["options"], key=f"ans_{i}")
-        responses.append(choice)
-        st.markdown("---")
+# Session state setup
+if "pdf_path" not in st.session_state:
+    st.session_state["pdf_path"] = None
+if "mode" not in st.session_state:
+    st.session_state["mode"] = None
 
-    # 3) score & show explanations
-    if st.button("Submit Quiz", key="submit_quiz_btn"):
-        score, results = score_quiz(responses, st.session_state["quiz_questions"])
-        st.success(f"✅ You scored {score}/{len(responses)}")
-        for idx, q in enumerate(st.session_state["quiz_questions"]):
-            icon = "✅" if results[idx] else "❌"
-            st.markdown(f"Q{idx+1}: {icon} Correct: **{q['answer']}**, You: {responses[idx]}")
-            if q.get("explanation"):
-                st.write(f"*Explanation:* {q['explanation']}")
-            st.markdown("---")
+# Upload PDF
+st.subheader("\U0001F4C4 Upload your PDF")
+uploaded_file = st.file_uploader("Choose a PDF", type=["pdf"])
+if uploaded_file:
+    with open("temp.pdf", "wb") as f:
+        f.write(uploaded_file.read())
+    st.session_state["pdf_path"] = "temp.pdf"
+    st.success("✅ PDF uploaded successfully! Now choose a mode.")
 
-# ——— Main App —————————————————————————————————————
-def main():
-    st.set_page_config(page_title="MeowTutor", layout="wide")
-    st.title("🐱 MeowTutor")
-
-    # Upload PDF
-    uploaded = st.file_uploader("Upload a PDF", type=["pdf"])
-    if not uploaded:
-        return
-
-    # Save to temp file
-    pdf_path = os.path.join("temp.pdf")
-    with open(pdf_path, "wb") as f:
-        f.write(uploaded.read())
-
-    # Choose mode
-    mode = st.sidebar.selectbox("Mode", ["Reading Mode", "Testing Mode"])
+# If PDF is uploaded
+if st.session_state["pdf_path"]:
+    st.subheader("\U0001F500 Select Mode")
+    mode = st.selectbox("Choose Mode", ["Reading Mode", "Testing Mode"])
+    st.session_state["mode"] = mode
 
     if mode == "Reading Mode":
-        st.header("📖 Reading Mode")
-        show_pdf(pdf_path)
-        st.sidebar.markdown("### Chatbot")
-        qa_chain = get_qa_chain(pdf_path)
-        # Chat UI
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
-        query = st.sidebar.text_input("Ask something about the document…")
-        if query:
-            result = qa_chain({"question": query, "chat_history": st.session_state.chat_history})
-            st.sidebar.markdown(f"**Answer:** {result['answer']}")
-            st.session_state.chat_history = result["chat_history"]
+        st.header("\U0001F4D6 Reading Mode")
+        col1, col2 = st.columns([4, 1])
 
-    else:
-        st.header("🧪 Testing Mode")
-        show_mcq_interface(pdf_path)
+        with col1:
+            show_pdf(st.session_state["pdf_path"], height=700)
 
-if __name__ == "__main__":
-    main()
+        with col2:
+            st.subheader("\U0001F4AC Chatbot")
+            query = st.text_input("Ask something about the document…")
+            if query:
+                with st.spinner("🔄 Thinking…"):
+                    qa_chain = get_qa_chain(st.session_state["pdf_path"], GOOGLE_API_KEY)
+                    result = qa_chain({"question": query, "chat_history": []})
+                    st.markdown(f"**Answer:** {result['answer']}")
+
+    elif mode == "Testing Mode":
+        st.header("\U0001F9E0 Testing Mode")
+        show_mcq_interface(st.session_state["pdf_path"])
+
+else:
+    st.info("Please upload a PDF file to proceed.")
