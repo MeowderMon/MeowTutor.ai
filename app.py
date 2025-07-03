@@ -24,14 +24,15 @@ GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 st.set_page_config(page_title="MeowTutor", layout="wide")
 st.title("\U0001F4D8 MeowTutor – Smart Reading & Testing Tutor")
 
-# Helper to embed PDF using Streamlit built-in component
+# Helper to embed PDF using Streamlit native PDF rendering workaround
 def show_pdf(path):
     with open(path, "rb") as f:
         base64_pdf = base64.b64encode(f.read()).decode("utf-8")
     pdf_display = f"""
-        <embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700px" type="application/pdf">
+    <iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700px" type="application/pdf"></iframe>
+    <p><a href="data:application/pdf;base64,{base64_pdf}" download="document.pdf">📥 Download PDF</a></p>
     """
-    st.components.v1.html(pdf_display, height=700)
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
 # Build Gemini-based QA Chain
 def get_qa_chain(pdf_path, api_key):
