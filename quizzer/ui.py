@@ -1,43 +1,86 @@
 import streamlit as st
-from quizzer.generator import generate_mcqs_from_text
-from quizzer.scorer import score_quiz
-from langchain_community.document_loaders import PyMuPDFLoader
+from quizzer.scorer import calculate_score
 
-def show_mcq_interface(pdf_path):
-    if "quiz_questions" not in st.session_state or not st.session_state["quiz_questions"]:
-        st.markdown("### 🧠 Generate a Quiz from PDF")
-        num_mcqs = st.slider("Number of MCQs", min_value=5, max_value=20, value=5, step=1, key="numq_slider")
-        if st.button("Generate Quiz", key="gen_quiz_btn"):
-            with st.spinner("🔄 Generating questions from PDF..."):
-                loader = PyMuPDFLoader(pdf_path)
-                docs = loader.load()
-                full_text = "\n".join([d.page_content for d in docs])
-                questions = generate_mcqs_from_text(full_text, num_questions=num_mcqs)
-                if not questions:
-                    st.error("❌ Failed to generate any questions. Try with a different PDF or check your generator.")
-                    return
-                st.success(f"✅ Generated {len(questions)} MCQs.")
-                st.session_state["quiz_questions"] = questions
-            st.rerun()
+def display_quiz_interface(quiz_data):
+    """Display quiz interface"""
+    if not quiz_data or "questions" not in quiz_data:
+        st.error("Invalid quiz data")
         return
-
-    questions = st.session_state["quiz_questions"]
-    st.markdown("### 📝 Take the Quiz")
-    responses = []
-    for i, q in enumerate(questions):
-        st.markdown(f"**Q{i+1}. {q['question']}**")
-        choice = st.radio("Select an option:", q["options"], key=f"ans_{i}")
-        responses.append(choice)
+    
+    questions = quiz_data["questions"]
+    
+    st.subheader(f"Quiz - {len(questions)} Questions")
+    
+    # Initialize answers in session state
+    if 'quiz_answers' not in st.session_state:
+        st.session_state['quiz_answers'] = {}
+    
+    # Display questions
+    for i, question_data in enumerate(questions):
+        st.markdown(f"**Question {i+1}:**")
+        st.write(question_data["question"])
+        
+        # Display options
+        options = question_data["options"]
+        option_labels = list(options.keys())
+        option_values = [f"{key}) {value}" for key, value in options.items()]
+        
+        # Radio button for answer selection
+        selected_answer = st.radio(
+            f"Select your answer for Question {i+1}:",
+            option_labels,
+            key=f"q_{i}",
+            format_func=lambda x: f"{x}) {options[x]}"
+        )
+        
+        # Store answer
+        st.session_state['quiz_answers'][i] = selected_answer
+        
         st.markdown("---")
+    
+    # Submit button
+    if st.button("Submit Quiz", type="primary"):
+        if len(st.session_state['quiz_answers']) == len(questions):
+            display_quiz_results(quiz_data)
+        else:
+            st.warning("Please answer all questions before submitting!")
 
-    if st.button("Submit Quiz", key="submit_quiz_btn"):
-        score, results = score_quiz(responses, questions)
-        st.success(f"✅ You scored {score}/{len(questions)}")
-        for idx, q in enumerate(questions):
-            correct = q['answer']
-            user = responses[idx]
-            icon = "✅" if results[idx] else "❌"
-            st.markdown(f"Q{idx+1}: {icon} Correct: **{correct}**, You: {user}")
-            explanation = q.get('explanation')
-            st.write(f"*Explanation:* {explanation}")
-            st.markdown("---")
+def display_quiz_results(quiz_data):
+    """Display quiz results"""
+    questions = quiz_data["questions"]
+    user_answers = st.session_state['quiz_answers']
+    
+    # Calculate score
+    score = calculate_score(quiz_data, user_answers)
+    
+    st.subheader("Quiz Results")
+    st.metric("Score", f"{score['correct']}/{score['total']}", f"{score['percentage']:.1f}%")
+    
+    # Display detailed results
+    st.markdown("### Detailed Results")
+    
+    for i, question_data in enumerate(questions):
+        correct_answer = question_data["correct_answer"]
+        user_answer = user_answers.get(i, "")
+        is_correct = user_answer == correct_answer
+        
+        # Question header
+        if is_correct:
+            st.success(f"✅ Question {i+1} - Correct!")
+        else:
+            st.error(f"❌ Question {i+1} - Incorrect")
+        
+        # Question and answers
+        st.write(f"**Question:** {question_data['question']}")
+        st.write(f"**Your Answer:** {user_answer}) {question_data['options'][user_answer]}")
+        
+        if not is_correct:
+            st.write(f"**Correct Answer:** {correct_answer}) {question_data['options'][correct_answer]}")
+        
+        st.write(f"**Explanation:** {question_data['explanation']}")
+        st.markdown("---")
+    
+    # Reset quiz button
+    if st.button("Take Quiz Again"):
+        st.session_state['quiz_answers'] = {}
+        st.rerun()

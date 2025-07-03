@@ -1,91 +1,108 @@
-import streamlit as st
-import fitz  # PyMuPDF
-import base64
-import os
+import os, base64, streamlit as st
 from dotenv import load_dotenv
+from utils.helpers      import setup_page_config, get_session_state
+from utils.pdf_utils    import extract_text_from_pdf
+from utils.doc_loader   import load_and_chunk_text
+from chatbot.chatbot    import create_chatbot_chain
+from quizzer.generator  import generate_quiz
+from quizzer.ui         import display_quiz_interface
 
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain
+load_dotenv()
 
-from quizzer.generator import generate_mcqs_from_text
-from quizzer.ui import show_mcq_interface
-from quizzer.scorer import score_quiz
 
-# Load API key
-dotenv_path = os.path.join(os.getcwd(), ".env")
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path)
-GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
+# ── small helper to embed PDF ───────────────────────────────────
+def display_pdf(uploaded) -> bool:
+    if not uploaded:
+        return False
+    try:
+        b64 = base64.b64encode(uploaded.getvalue()).decode()
+        st.markdown(
+            f"""
+            <div style="width:100%;height:800px;border:2px solid #e0e0e0;
+                        border-radius:8px;overflow:hidden">
+              <embed src="data:application/pdf;base64,{b64}" type="application/pdf"
+                     width="100%" height="100%">
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return True
+    except Exception as e:
+        st.error(e)
+        return False
 
-# Set up Streamlit
-st.set_page_config(page_title="MeowTutor", layout="wide")
-st.title("\U0001F4D8 MeowTutor – Smart Reading & Testing Tutor")
 
-# Actual PDF embed using <embed> tag (works in most environments except when blocked by CSP)
-def show_pdf(path):
-    with open(path, "rb") as f:
-        base64_pdf = base64.b64encode(f.read()).decode("utf-8")
-    pdf_display = f"""
-    <embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700px" type="application/pdf" />
-    """
-    st.components.v1.html(pdf_display, height=700)
+# ────────────────────────────────────────────────────────────────
+def main():
+    setup_page_config()
+    get_session_state()
 
-# Build Gemini-based QA Chain
-def get_qa_chain(pdf_path, api_key):
-    loader = PyMuPDFLoader(pdf_path)
-    docs = loader.load()
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    chunks = splitter.split_documents(docs)
+    st.title("🐱 MeowTutor.ai")
+    st.caption("AI-powered reading & testing with your own PDFs")
 
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    uploaded = st.file_uploader("Upload a PDF", type="pdf")
+    if not uploaded:
+        st.stop()
 
-    llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
-    return ConversationalRetrievalChain.from_llm(llm, vectorstore.as_retriever())
+    mode = st.radio("Select Mode", ["📖 Reading", "🧠 Testing"], horizontal=True)
 
-# Session state setup
-if "pdf_path" not in st.session_state:
-    st.session_state["pdf_path"] = None
-if "mode" not in st.session_state:
-    st.session_state["mode"] = None
-
-# Upload PDF
-st.subheader("\U0001F4C4 Upload your PDF")
-uploaded_file = st.file_uploader("Choose a PDF", type=["pdf"])
-if uploaded_file:
-    with open("temp.pdf", "wb") as f:
-        f.write(uploaded_file.read())
-    st.session_state["pdf_path"] = "temp.pdf"
-    st.success("✅ PDF uploaded successfully! Now choose a mode.")
-
-# If PDF is uploaded
-if st.session_state["pdf_path"]:
-    st.subheader("\U0001F500 Select Mode")
-    mode = st.selectbox("Choose Mode", ["Reading Mode", "Testing Mode"])
-    st.session_state["mode"] = mode
-
-    if mode == "Reading Mode":
-        st.header("\U0001F4D6 Reading Mode")
-        col1, col2 = st.columns([4, 1])
+    # =======================================================
+    # 📖  READING
+    # =======================================================
+    if mode.startswith("📖"):
+        col1, col2 = st.columns([3, 2])
 
         with col1:
-            show_pdf(st.session_state["pdf_path"])
+            st.subheader("PDF")
+            display_pdf(uploaded)
 
         with col2:
-            st.subheader("\U0001F4AC Chatbot")
-            query = st.text_input("Ask something about the document…")
-            if query:
-                with st.spinner("🔄 Thinking…"):
-                    qa_chain = get_qa_chain(st.session_state["pdf_path"], GOOGLE_API_KEY)
-                    result = qa_chain({"question": query, "chat_history": []})
-                    st.markdown(f"**Answer:** {result['answer']}")
+            st.subheader("AI Tutor")
 
-    elif mode == "Testing Mode":
-        st.header("\U0001F9E0 Testing Mode")
-        show_mcq_interface(st.session_state["pdf_path"])
+            # init chain once
+            if "chatbot_chain" not in st.session_state:
+                text = extract_text_from_pdf(uploaded)
+                docs = load_and_chunk_text(text)
+                st.session_state.chatbot_chain = create_chatbot_chain(docs)
+                st.session_state.chat_history  = []
 
-else:
-    st.info("Please upload a PDF file to proceed.")
+            # show history
+            for i, (q, a) in enumerate(st.session_state.chat_history, 1):
+                with st.expander(f"Q{i}: {q[:50]}"):
+                    st.markdown(f"**You:** {q}")
+                    st.markdown(f"**AI:**  {a}")
+
+            # form (no manual session-state hacks)
+            with st.form("chat"):
+                user_q = st.text_input("Ask a question")
+                sent   = st.form_submit_button("Ask AI Tutor")
+
+            if sent and user_q.strip():
+                out   = st.session_state.chatbot_chain({"question": user_q})
+                answer = out["answer"]
+                st.session_state.chat_history.append((user_q, answer))
+                st.markdown(f"**AI Tutor:** {answer}")
+
+    # =======================================================
+    # 🧠  TESTING
+    # =======================================================
+    else:
+        st.header("Testing Mode")
+        n_qs = st.slider("Questions", 5, 20, 10)
+        diff = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"])
+
+        if st.button("Generate Quiz"):
+            with st.spinner("Generating…"):
+                quiz = generate_quiz(extract_text_from_pdf(uploaded), n_qs, diff)
+                if quiz.get("questions"):
+                    st.session_state.quiz_data = quiz
+                    st.session_state.quiz_generated = True
+                else:
+                    st.session_state.quiz_generated = False
+
+        if st.session_state.get("quiz_generated"):
+            display_quiz_interface(st.session_state.quiz_data)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,50 +1,76 @@
-import os
-import json
-from langchain_google_genai import GoogleGenerativeAI
-from dotenv import load_dotenv
+import json, re, os, streamlit as st
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema      import SystemMessage, HumanMessage
 
-load_dotenv()
-api_key = os.getenv("GEMINI_API_KEY")
 
-llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
+# ── helper: strip ```
+def _clean_json(raw: str) -> str:
+    txt = raw.strip()
 
-def generate_mcqs_from_text(text, num_questions=5):
-    prompt = f"""
-You are a quiz generator. Based on the content below, generate {num_questions} multiple choice questions.
-Each question should have 4 options and one correct answer, and a brief explanation for the answer.
+    # remove markdown fences if present
+    if txt.startswith("```"):
+        txt = re.sub(r"^``````$", "", txt, flags=re.IGNORECASE | re.DOTALL).strip()
 
-Return the result strictly in JSON format inside triple backticks like this:
+    # some models prepend text → keep only the first {...}
+    start = txt.find("{")
+    end   = txt.rfind("}")
+    if start != -1 and end != -1:
+        txt = txt[start : end + 1]
 
-\\`\\`\\`json
-[
-  {{
-    "question": "What is the capital of France?",
-    "options": ["Paris", "Berlin", "Rome", "Madrid"],
-    "answer": "Paris"
-    "explanation":"Because Paris has been the seat of the French government since the Middle Ages."
-  }}
-]
-\\`\\`\\`
+    return txt
 
-CONTENT:
-{text[:3000]}
-"""
+
+def _parse_llm_json(raw: str) -> dict:
+    clean = _clean_json(raw)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"❌ Model returned invalid JSON\n\n-----\n{raw}\n-----") from e
+
+
+# ────────────────────────────────────────────────────────────────
+def generate_quiz(text: str, num_q: int = 10, difficulty: str = "Medium") -> dict:
+    """
+    Ask Gemini to create MCQs and return them as a Python dict.
+    Returns  {"questions":[...]}  or  {}  if anything goes wrong.
+    """
+
+    api_key = os.getenv("GOOGLE_API_KEY", "")
+    if not api_key:
+        st.error("GOOGLE_API_KEY missing.")
+        return {}
+
+    llm = ChatGoogleGenerativeAI(
+        model       = "gemini-2.5-flash",
+        temperature = 2,
+        google_api_key = api_key,
+    )
+
+    sys_prompt = (
+        "You are an expert quiz generator.\n"
+        f"Create {num_q} multiple-choice questions (difficulty: {difficulty}).\n"
+        "Return ONLY valid JSON using this schema:\n"
+        "{\n"
+        '  "questions": [\n'
+        "    {\n"
+        '      "question": str,\n'
+        '      "options": {"A": str, "B": str, "C": str, "D": str},\n'
+        '      "correct_answer": "A" | "B" | "C" | "D",\n'
+        '      "explanation": str\n'
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+
+    user_msg = text[:3000]  # token safety
+    messages = [SystemMessage(content=sys_prompt), HumanMessage(content=user_msg)]
+
+    # use .invoke (recommended) instead of deprecated __call__
+    response = llm.invoke(messages)
+    raw_out  = response.content or ""
 
     try:
-        response = llm.invoke(prompt)
-        if "```" in response:
-            parts = response.split("```")
-            json_block = parts[1]
-            if json_block.strip().lower().startswith("json"):
-                json_block = "\n".join(json_block.splitlines()[1:])
-            json_code = json_block.strip()
-        else:
-            json_code = response.strip()
-
-        result = json.loads(json_code)
-
-        if isinstance(result, list):
-            return result
-        return []
-    except Exception:
-        return []
+        return _parse_llm_json(raw_out)
+    except ValueError as e:
+        st.error(str(e))
+        return {}

@@ -1,26 +1,58 @@
+# chatbot/chatbot.py
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+import streamlit as st
+from langchain.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings,ChatGoogleGenerativeAI
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
 
-load_dotenv()
 
-gemini_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GEMINI_API_KEY")
-)
+def _missing_api_key() -> bool:
+    return not os.getenv("GOOGLE_API_KEY", "").strip()
 
-def generate_chatbot_response(query: str, context: str) -> str:
+
+def create_chatbot_chain(documents):
     """
-    Uses Gemini via LangChain to answer user queries based on the document context.
+    Build a ConversationalRetrievalChain from a list of LangChain Documents.
+    Returns the chain or raises a ValueError with a user-readable message.
     """
-    prompt_template = (
-        "You are a helpful tutor. Use the following context to answer the student's question.\n"
-        "\nContext:\n{context}\n"
-        "\nQuestion: {question}\n"
-        "Answer:"
+
+    # ---------- 1. Basic validations ----------
+    if _missing_api_key():
+        raise ValueError(
+            "GOOGLE_API_KEY is not set. Add it to your .env or Streamlit secrets."
+        )
+
+    if not documents:
+        raise ValueError(
+            "No text was extracted from the PDF, so the AI Tutor cannot be initialised."
+        )
+
+    # ---------- 2. Build components ----------
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
     )
-    prompt = PromptTemplate(input_variables=["context", "question"], template=prompt_template)
-    chain = LLMChain(llm=gemini_llm, prompt=prompt)
-    return chain.run({"context": context, "question": query})
+
+    vector_store = FAISS.from_documents(documents, embeddings)
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.3,
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
+    )
+
+    memory = ConversationBufferMemory(
+        memory_key="chat_history",
+        output_key="answer",
+        return_messages=True,
+    )
+
+    # ---------- 3. Assemble chain ----------
+    chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
+        memory=memory,
+        return_source_documents=True,
+    )
+    return chain
