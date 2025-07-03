@@ -9,3 +9,4 @@ fitz
 frontend 
 PyMuPDF
 tools
+langchain-community
