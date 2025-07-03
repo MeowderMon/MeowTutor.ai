@@ -8,3 +8,4 @@ PyMuPDF
 faiss-cpu
 python-dotenv
 requests
+langchain-google-genai
