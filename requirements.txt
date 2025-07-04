@@ -5,7 +5,7 @@ streamlit==1.46.1          # keep the one Cloud already cached
 langchain==0.3.26
 langchain-community==0.3.27
 langchain-core==0.3.67
-langchain-google-genai==2.0.10    # ← correct package name
+langchain-google-genai==2.0.10    # correct package name
 
 # ── Google SDK (pulled automatically by the adapter but pin anyway)
 google-generativeai==0.8.5
