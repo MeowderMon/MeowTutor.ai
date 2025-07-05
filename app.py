@@ -10,26 +10,12 @@ from quizzer.ui         import display_quiz_interface
 
 load_dotenv()
 
-# ── Helper: Display embedded PDF in UI ──────────────────────────────
-def display_pdf(uploaded) -> bool:
-    if not uploaded:
-        return False
-    try:
-        b64 = base64.b64encode(uploaded.getvalue()).decode()
-        st.markdown(
-            f"""
-            <div style="width:100%;height:800px;border:2px solid #e0e0e0;
-                        border-radius:8px;overflow:hidden">
-              <embed src="data:application/pdf;base64,{b64}" type="application/pdf"
-                     width="100%" height="100%">
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return True
-    except Exception as e:
-        st.error(e)
-        return False
+
+from streamlit_pdf_viewer import pdf_viewer
+
+def display_pdf(uploaded):
+    if uploaded:
+        pdf_viewer(uploaded.getvalue(), width=700, height=900)
 
 
 # ── Main Streamlit App ──────────────────────────────────────────────
@@ -245,6 +231,7 @@ def main():
     uploaded = st.file_uploader("Upload a PDF", type="pdf")
     if not uploaded:
         st.stop()
+
 
     #mode = st.radio("Select Mode", ["📖 Reading", "🧠 Testing"], horizontal=True)
     mode = st.radio("⚡ Choose Your Cyber Mode", ["🧬 Neural Read", "🎯 Quiz Attack"], horizontal=True)

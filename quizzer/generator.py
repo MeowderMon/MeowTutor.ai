@@ -42,7 +42,7 @@ def generate_quiz(text: str, num_q: int = 10, difficulty: str = "Medium") -> dic
 
     llm = ChatGoogleGenerativeAI(
         model       = "gemini-2.5-flash",
-        temperature = 2,
+        temperature = 0.9,
         google_api_key = api_key,
     )
 
