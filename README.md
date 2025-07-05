@@ -31,10 +31,10 @@ Install these manually before running the app:
 
 ### Windows:
 
-- [Poppler](http://blog.alivate.com.au/poppler-windows/)  
+- [Poppler](https://github.com/oschwartz10612/poppler-windows/releases)  
   ➤ Add `C:\poppler-xx\Library\bin` to **System PATH**
 
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)  
+- [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)  
   ➤ Add `C:\Program Files\Tesseract-OCR` to **System PATH**
 
 
