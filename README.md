@@ -32,10 +32,10 @@ Install these manually before running the app:
 ### Windows:
 
 - [Poppler](https://github.com/oschwartz10612/poppler-windows/releases)  
-  ➤ Add `C:\poppler-xx\Library\bin` to **System PATH**
+  ➤ Add `C:\poppler-xx\Library\bin` (your path) to **System PATH** 
 
 - [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)  
-  ➤ Add `C:\Program Files\Tesseract-OCR` to **System PATH**
+  ➤ Add `C:\Program Files\Tesseract-OCR` (your path) to **System PATH**
 
 
 
